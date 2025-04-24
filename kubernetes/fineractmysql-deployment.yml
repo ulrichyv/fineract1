@@ -123,6 +123,8 @@ spec:
               mountPath: /docker-entrypoint-initdb.d/
             - name: fineractmysql-persistent-storage
               mountPath: /var/lib/mysql/
+            - name: tmp-volume
+              mountPath: /tmp
       volumes:
         - name: fineractmysql-initdb
           configMap:
@@ -130,3 +132,6 @@ spec:
         - name: fineractmysql-persistent-storage
           persistentVolumeClaim:
             claimName: fineractmysql-pv-claim
+        - name: tmp-volume
+          emptyDir: {}
+
