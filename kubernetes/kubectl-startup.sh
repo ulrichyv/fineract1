@@ -19,61 +19,47 @@
 #
 
 # Fonction pour attendre qu'un pod soit en état Running
-wait_for_pod() {
-    local selector=$1
-    local pod=""
-    local status=""
-    
-    echo -n "Waiting for pod with selector $selector to be created..."
-    while [[ -z "$pod" ]]; do
-        pod=$(kubectl get pods -l "$selector" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        sleep 2
-    done
-    echo " found: $pod"
-    
-    echo -n "Waiting for pod $pod to be Running..."
-    while [[ "$status" != "Running" ]]; do
-        status=$(kubectl get pod "$pod" -o jsonpath='{.status.phase}')
-        if [[ "$status" == "Failed" || "$status" == "Error" ]]; then
-            echo "Pod failed to start"
-            kubectl logs "$pod"
-            exit 1
-        fi
-        sleep 2
-    done
-    echo " running"
-    
-    # Attendre que le pod soit vraiment prêt
-    echo -n "Waiting for pod $pod to be fully ready..."
-    kubectl wait --for=condition=ready pod/"$pod" --timeout=300s
-    echo " ready"
-}
+#!/bin/bash
 
-# Génération du mot de passe
+# Generate random password
 DB_PASSWORD=$(head /dev/urandom | LC_CTYPE=C tr -dc 'A-Za-z0-9' | head -c 16)
 
-echo "Setting Up Fineract service configuration..."
+# Create secrets
 kubectl create secret generic fineract-tenants-db-secret \
-  --from-literal=username=root \
-  --from-literal=password="$DB_PASSWORD" \
+  --from-literal=username=fineract \
+  --from-literal=password=$DB_PASSWORD \
   --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl apply -f fineractmysql-configmap.yml
+# Deploy MySQL
+echo "Deploying MySQL..."
+kubectl apply -f fineract-mysql-deployment.yml
 
-echo
-echo "Starting fineractmysql..."
-kubectl apply -f fineractmysql-deployment.yml
-wait_for_pod "tier=fineractmysql"
+# Wait for MySQL
+echo "Waiting for MySQL to be ready..."
+kubectl wait --for=condition=ready pod -l tier=fineractmysql --timeout=300s
 
-# Initialisation supplémentaire pour la base de données
+# Initialize database
 echo "Initializing database..."
-kubectl exec -it "$(kubectl get pods -l tier=fineractmysql -o jsonpath='{.items[0].metadata.name}')" -- \
-  mysql -uroot -p"$DB_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS fineract_tenants;"
+kubectl exec -it $(kubectl get pods -l tier=fineractmysql -o jsonpath='{.items[0].metadata.name}') -- \
+  mysql -uroot -p$DB_PASSWORD -e "CREATE DATABASE IF NOT EXISTS fineract_tenants; GRANT ALL PRIVILEGES ON fineract_tenants.* TO 'fineract'@'%'; FLUSH PRIVILEGES;"
 
-echo
-echo "Starting fineract server..."
+# Deploy Fineract
+echo "Deploying Fineract Server..."
 kubectl apply -f fineract-server-deployment.yml
-wait_for_pod "tier=backend"
+kubectl apply -f fineract-server-service.yml
+
+# Wait for Fineract
+echo "Waiting for Fineract to be ready..."
+kubectl wait --for=condition=ready pod -l tier=backend --timeout=300s
+
+# Get access information
+echo ""
+echo "Deployment completed successfully!"
+echo "Database credentials:"
+echo "Username: fineract"
+echo "Password: $DB_PASSWORD"
+echo ""
+echo "Fineract Server URL: https://$(kubectl get svc fineract-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}'):8443"
 
 echo "Fineract server is up and running"
 

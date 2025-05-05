@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fineract-server
+  labels:
+    app: fineract-server
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 8443
+    targetPort: 8443
+    name: https
+  selector:
+    app: fineract-server
+    tier: backend
