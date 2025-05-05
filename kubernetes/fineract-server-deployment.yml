@@ -14,8 +14,6 @@
 # KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
-
 
 apiVersion: v1
 kind: Service
@@ -56,37 +54,41 @@ spec:
     spec:
       initContainers:
         - name: init-mydb
-          image: busybox:1.28
-          command: ['sh', '-c', 'echo -e "Checking for the availability of MYSQL server deployment"; while ! nc -z "fineractmysql" 3306; do sleep 1; printf "-"; done; echo -e " >> MYSQL server has started";']
+          image: busybox:1.34
+          command: ['sh', '-c', 'echo "Waiting for MySQL..."; timeout 300 sh -c "while ! nc -z fineractmysql 3306; do sleep 2; done"; echo "MySQL is ready"']
       containers:
       - name: fineract-server
         image: apache/fineract:latest
         resources:
           limits:
             cpu: "1000m"
-            memory: "1Gi"
+            memory: "2Gi"
           requests:
-            cpu: "200m"
-            memory: "0.5Gi"
+            cpu: "500m"
+            memory: "1Gi"
         livenessProbe:
           httpGet:
             path: /fineract-provider/actuator/health/liveness
             port: 8080
           initialDelaySeconds: 180
-          periodSeconds: 1
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /fineract-provider/actuator/health/readiness
             port: 8080
           initialDelaySeconds: 180
-          periodSeconds: 1
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         env:
         - name: FINERACT_NODE_ID
           value: '1'
         - name: FINERACT_HIKARI_DRIVER_CLASS_NAME
           value: org.mariadb.jdbc.Driver
         - name: FINERACT_HIKARI_JDBC_URL
-          value: jdbc:mariadb://fineractmysql:3306/fineract_tenants
+          value: jdbc:mariadb://fineractmysql:3306/fineract_tenants?useSSL=false&allowPublicKeyRetrieval=true
         - name: FINERACT_HIKARI_USERNAME
           valueFrom:
             secretKeyRef:
@@ -112,7 +114,7 @@ spec:
               name: fineract-tenants-db-secret
               key: password
         - name: FINERACT_DEFAULT_TENANTDB_CONN_PARAMS
-          value: ''
+          value: 'useSSL=false&allowPublicKeyRetrieval=true'
         - name: JAVA_TOOL_OPTIONS
           value: '-Xmx1G'
         ports:
