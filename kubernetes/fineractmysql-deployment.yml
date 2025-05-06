@@ -67,7 +67,7 @@ spec:
         tier: fineractmysql
     spec:
       containers:
-        - image: mariadb:11.7.2
+        - image: mysql:8.0  # Changer l'image à MySQL officiel
           name: mysql
           resources:
             requests:
@@ -77,7 +77,7 @@ spec:
               memory: "5Gi"
               cpu: "2000m"
           env:
-            - name: MARIADB_ROOT_PASSWORD
+            - name: MYSQL_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: fineract-tenants-db-secret
@@ -87,7 +87,7 @@ spec:
               command:
                 - sh
                 - -c
-                - "mysql -uroot -p${MARIADB_ROOT_PASSWORD} -e 'SELECT 1;'"
+                - "mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e 'SELECT 1;'"
             failureThreshold: 10
             timeoutSeconds: 10
           readinessProbe:
@@ -95,7 +95,7 @@ spec:
               command:
                 - sh
                 - -c
-                - "mysql -uroot -p${MARIADB_ROOT_PASSWORD} -e 'SELECT 1;'"
+                - "mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e 'SELECT 1;'"
             failureThreshold: 10
             initialDelaySeconds: 5
             periodSeconds: 5
