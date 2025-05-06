@@ -18,60 +18,53 @@
 # under the License.
 #
 
-# Fonction pour attendre qu'un pod soit en état Running
-#!/bin/bash
+echo "Setting Up Fineract service configuration..."
+kubectl create secret generic fineract-tenants-db-secret --from-literal=username=root --from-literal=password=$(head /dev/urandom | LC_CTYPE=C tr -dc A-Za-z0-9 | head -c 16)
+kubectl apply -f fineractmysql-configmap.yml
 
-# Generate random password
-DB_PASSWORD=$(head /dev/urandom | LC_CTYPE=C tr -dc 'A-Za-z0-9' | head -c 16)
+echo
+echo "Starting fineractmysql..."
+kubectl apply -f fineractmysql-deployment.yml
 
-# Create secrets
-kubectl create secret generic fineract-tenants-db-secret \
-  --from-literal=username=fineract \
-  --from-literal=password=$DB_PASSWORD \
-  --dry-run=client -o yaml | kubectl apply -f -
+fineractmysql_pod=""
+while [[ ${#fineractmysql_pod} -eq 0 ]]; do
+    fineractmysql_pod=$(kubectl get pods -l tier=fineractmysql --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}')
+done
 
-# Deploy MySQL
-echo "Deploying MySQL..."
-kubectl apply -f fineract-mysql-deployment.yml
+fineractmysql_status=$(kubectl get pods ${fineractmysql_pod} --no-headers -o custom-columns=":status.phase")
+while [[ ${fineractmysql_status} -ne 'Running' ]]; do
+    sleep 1
+    fineractmysql_status=$(kubectl get pods ${fineractmysql_pod} --no-headers -o custom-columns=":status.phase")
+done
 
-# Wait for MySQL
-echo "Waiting for MySQL to be ready..."
-kubectl wait --for=condition=ready pod -l tier=fineractmysql --timeout=300s
-
-# Initialize database
-echo "Initializing database..."
-kubectl exec -it $(kubectl get pods -l tier=fineractmysql -o jsonpath='{.items[0].metadata.name}') -- \
-  mysql -uroot -p$DB_PASSWORD -e "CREATE DATABASE IF NOT EXISTS fineract_tenants; GRANT ALL PRIVILEGES ON fineract_tenants.* TO 'fineract'@'%'; FLUSH PRIVILEGES;"
-
-# Deploy Fineract
-echo "Deploying Fineract Server..."
+echo
+echo "Starting fineract server..."
 kubectl apply -f fineract-server-deployment.yml
-kubectl apply -f fineract-server-service.yml
 
-# Wait for Fineract
-echo "Waiting for Fineract to be ready..."
-kubectl wait --for=condition=ready pod -l tier=backend --timeout=300s
+fineract_server_pod=""
+while [[ ${#fineract_server_pod} -eq 0 ]]; do
+    fineract_server_pod=$(kubectl get pods -l tier=backend --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}')
+done
 
-# Get access information
-echo ""
-echo "Deployment completed successfully!"
-echo "Database credentials:"
-echo "Username: fineract"
-echo "Password: $DB_PASSWORD"
-echo ""
-echo "Fineract Server URL: https://$(kubectl get svc fineract-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}'):8443"
+fineract_server_status=$(kubectl get pods ${fineract_server_pod} --no-headers -o custom-columns=":status.phase")
+while [[ ${fineract_server_status} -ne 'Running' ]]; do
+    sleep 1
+    fineract_server_status=$(kubectl get pods ${fineract_server_pod} --no-headers -o custom-columns=":status.phase")
+done
 
 echo "Fineract server is up and running"
 
 echo "Starting Mifos Community UI..."
 kubectl apply -f fineract-mifoscommunity-deployment.yml
-wait_for_pod "app=mifoscommunity"
 
+fineract_mifoscommunity_pod=""
+while [[ ${#fineract_mifoscommunity_pod} -eq 0 ]]; do
+    fineract_mifoscommunity_pod=$(kubectl get pods -l tier=backend --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}')
+done
+
+fineract_mifoscommunity_status=$(kubectl get pods ${fineract_mifoscommunity_pod} --no-headers -o custom-columns=":status.phase")
+while [[ ${fineract_mifoscommunity_status} -ne 'Running' ]]; do
+    sleep 1
+    fineract_mifoscommunity_status=$(kubectl get pods ${fineract_mifoscommunity_pod} --no-headers -o custom-columns=":status.phase")
+done
 echo "Mifos Community UI is up and running"
-
-# Affichage des informations d'accès
-echo
-echo "Deployment completed successfully!"
-echo "Database password: $DB_PASSWORD"
-echo "You can access Fineract at: $(kubectl get service fineract-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}'):8443"
-echo "You can access Mifos Community UI at: $(kubectl get service mifoscommunity -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
