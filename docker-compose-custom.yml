@@ -29,7 +29,7 @@ services:
       file: ./config/docker/compose/fineract-custom.yml
       service: fineract
     ports:
-      - "8443:8443"
+      - "9443:8443"
     depends_on:
       db:
         condition: service_healthy

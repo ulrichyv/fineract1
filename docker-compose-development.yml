@@ -70,7 +70,7 @@ services:
       file: ./config/docker/compose/fineract.yml
       service: fineract
     ports:
-      - "8443:8443"
+      - "9443:8443"
       - "5000:5000"
     depends_on:
       db:
